@@ -8,7 +8,7 @@ In this project, it was required to modify Minix to include different scheduling
 - Multi-Level Feedback Queue
   
 Each algorithm required a specific modification on the scheduler. A configuration file was created to switch between the different algorithms
-This file was added to the global ***/include*** directory, so it can be accessed from any needed file.
+This file was added to the global include directory ( ***usr/include*** in minix3 ), so it can be accessed from any needed file.
 
 ```
 #define MY_SCHEDULING_ALGORITHM  4
@@ -24,10 +24,10 @@ This file was added to the global ***/include*** directory, so it can be accesse
 
 The default scheduling policy of minix is **multi-priority round robin queue** . This policy ensures that no process shall consume the CPU for long time, processes which do so will be punished by lowering its priority, and processes who will act ideally will be rewarded by moving them up to a higher priority queue.
 
-The file responsible for scheduling the newly created processes is schedule.c, located in ***“/usr/src/servers/sched/”***  in minix 3.2.1 and ***/usr/src/minix/servers/sched*** in Minix 3.4 , the functions inside these file are called whenever a:
-1. Process is created
-2. Process finished its quantum
-3. Process is finished
+The file responsible for scheduling the newly created processes is schedule.c, located in ***“/usr/src/servers/sched/”***  in minix 3.2.1, ***“/minix/minix/servers/sched/”***  in minix 3.3 (this repository), and  ***/usr/src/minix/servers/sched*** in Minix 3.4 , the functions inside these file are called whenever
+1. a process is created
+2. a process finished its quantum
+3. a process is finished
    
 The functions responsible for this is as following, respectively:
 1.	do_start_scheduling()

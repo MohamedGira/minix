@@ -1,4 +1,4 @@
-/* This file contains the scheduling policy for SCHED
+ /* This file contains the scheduling policy for SCHED
  *
  * The entry points are:
  *   do_noquantum:        Called on behalf of process' that run out of quantum
@@ -12,7 +12,7 @@
 #include <assert.h>
 #include <minix/com.h>
 #include <machine/archtypes.h>
-
+#include <globalme.h>
 static unsigned balance_timeout;
 
 #define BALANCE_TIMEOUT	5 /* how often to balance queues in seconds */
@@ -96,14 +96,68 @@ int do_noquantum(message *m_ptr)
 	}
 
 	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
-	}
+	//printf("test");
+	if(MY_SCHEDULING_ALGORITHM==PRIORITY_SCHEDULING_ALGORITHM)
+{// priority algorithm edition
+
+
+	// if (rmp->priority < MIN_USER_Q) {
+	//	rmp->priority += 1; // lower priority 
+	//} 
+	// since the original minix scheduling algorithm is multilevel priority queue,
+	// disabling the feedback (disabling lowering the priority) will result in priorty scheduling algorithm
+	printf("PRIORITY: Process %d consumed timeslice %d and Priority %d\n", rmp->endpoint,rmp->time_slice, rmp->priority);
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		return rv;
 	}
 	return OK;
+}
+else if(MY_SCHEDULING_ALGORITHM==RR_SCHEDULING_ALGORITHM)
+	{
+		if ((rv = schedule_process_local(rmp)) != OK) {
+			return rv;
+		}
+
+		// since the original minix scheduling algorithm is multilevel priority queue,
+		// disabling the feedback (disabling lowering the priority) will result in fixing processes priorities
+
+		// if (rmp->priority < MIN_USER_Q) {
+		//	rmp->priority += 1; // lower priority 
+		//} 
+		return OK; 
+	}
+	else if(MY_SCHEDULING_ALGORITHM==MFQ_SCHEDULING_ALGORITHM)
+	{
+	
+		printf("MFQ: Process %d consumed  %d ms and had Priority of %d\n", rmp->endpoint,rmp->time_slice, rmp->priority);
+		if (rmp->priority<15)
+			{
+			rmp->priority+=1;
+			rmp->time_slice=rmp->priority*10;
+			}
+		if (rmp->priority==15)
+			rmp->time_slice=500000;
+		if ((rv = schedule_process_local(rmp)) != OK) {
+			return rv;
+		}
+		return OK; 
+	}
+	else if(MY_SCHEDULING_ALGORITHM==STANDARD_SCHEDULING_ALGORITHM||1){
+	// multilevel priority queue	
+		if (rmp->priority < MIN_USER_Q) {
+			rmp->priority += 1; // lower priority 
+		}
+
+		if ((rv = schedule_process_local(rmp)) != OK) {
+			return rv;
+		}
+		return OK;   
+	}else if (MY_SCHEDULING_ALGORITHM==SJF_SCHEDULING_ALGORITHM){
+		if ((rv = schedule_process_local(rmp)) != OK) {
+			return rv;
+		}
+	}
 }
 
 /*===========================================================================*
@@ -126,6 +180,13 @@ int do_stop_scheduling(message *m_ptr)
 	}
 
 	rmp = &schedproc[proc_nr_n];
+/* 
+if(MY_SCHEDULING_ALGORITHM==SJF_SCHEDULING_ALGORITHM)
+	printf("a process of time %d has finished \n",rmp->priority);
+else
+	printf("a process of priority %d has finished \n",rmp->priority);
+ */
+
 #ifdef CONFIG_SMP
 	cpu_proc[rmp->cpu]--;
 #endif
@@ -137,6 +198,11 @@ int do_stop_scheduling(message *m_ptr)
 /*===========================================================================*
  *				do_start_scheduling			     *
  *===========================================================================*/
+
+int tt2=0;
+int maptime(int time,int maxtime){
+	return (1.0*time/maxtime)*15;
+}
 int do_start_scheduling(message *m_ptr)
 {
 	register struct schedproc *rmp;
@@ -200,13 +266,59 @@ int do_start_scheduling(message *m_ptr)
 		/* Inherit current priority and time slice from parent. Since there
 		 * is currently only one scheduler scheduling the whole system, this
 		 * value is local and we assert that the parent endpoint is valid */
-		if ((rv = sched_isokendpt(m_ptr->m_lsys_sched_scheduling_start.parent,
-				&parent_nr_n)) != OK)
-			return rv;
+		
 
-		rmp->priority = schedproc[parent_nr_n].priority;
+	if ((rv = sched_isokendpt(m_ptr->m_lsys_sched_scheduling_start.parent,
+					&parent_nr_n)) != OK)
+				return rv;
+
+
+		if(MY_SCHEDULING_ALGORITHM==RR_SCHEDULING_ALGORITHM)
+  			{
+			rmp->priority=9; 
+			}
+
+		else if(MY_SCHEDULING_ALGORITHM==PRIORITY_SCHEDULING_ALGORITHM)
+			{
+				int a[]={1,3,2,4,5};
+				// check if process is not critical, if it is, we dont want to play with it
+				if (schedproc[parent_nr_n].priority>=7)
+					{
+						rmp->priority = (schedproc[parent_nr_n].priority+a[tt2++%5])%16;
+						if (rmp->priority==0)
+							rmp->priority+=8;
+						//for test purposes
+						printf("child process was given a priority of %d\n",rmp->priority);
+						if(tt2>50000)
+						tt2=0;
+						
+					}
+				else
+					rmp->priority = schedproc[parent_nr_n].priority;
+			}
+			else if(MY_SCHEDULING_ALGORITHM==SJF_SCHEDULING_ALGORITHM){
+				int a[]={1,3,2,6,4,15,12,2,10,11,6,8,7,9};
+				rmp->priority = maptime((schedproc[parent_nr_n].priority+a[tt2++%14])%12+4,15);
+				printf("a process of time %d is created\n",rmp->priority);
+			}
+			else
+			rmp->priority = schedproc[parent_nr_n].priority;
+		
 		rmp->time_slice = schedproc[parent_nr_n].time_slice;
-		break;
+		if(MY_SCHEDULING_ALGORITHM==MFQ_SCHEDULING_ALGORITHM &&	rmp->priority ==15)
+		rmp->time_slice = 10000;
+		else if(MY_SCHEDULING_ALGORITHM==PRIORITY_SCHEDULING_ALGORITHM&&rmp->priority >=6)
+		rmp->time_slice = 10000;
+		else if(MY_SCHEDULING_ALGORITHM==MFQ_SCHEDULING_ALGORITHM)
+		{
+			if(rmp->priority==15)
+			rmp->time_slice=500000;
+			else
+			rmp->time_slice=10*(rmp->priority);
+		}
+		else if(MY_SCHEDULING_ALGORITHM==SJF_SCHEDULING_ALGORITHM)
+			rmp->time_slice=500000;
+		break; 
 		
 	default: 
 		/* not reachable */
